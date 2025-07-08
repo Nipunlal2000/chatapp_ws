@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chat App</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      width: 90%;
+      max-width: 1100px;
+      height: 90vh;
+      display: none;
+      background: white;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: #fff;
+      border-right: 1px solid #ddd;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .sidebar h2 {
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+      color: #333;
+    }
+
+    .sidebar button {
+      background: #dc3545;
+      color: white;
+      border: none;
+      padding: 0.6rem 1rem;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .chat-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chat-header {
+      padding: 1rem;
+      background: #f5f5f5;
+      border-bottom: 1px solid #ddd;
+      font-weight: bold;
+    }
+
+    .chat-messages {
+      flex: 1;
+      padding: 1rem;
+      overflow-y: auto;
+      background: #e5ddd5;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .message {
+      margin-bottom: 0.75rem;
+      max-width: 70%;
+      padding: 0.75rem 1rem;
+      border-radius: 15px;
+      line-height: 1.4;
+      word-wrap: break-word;
+    }
+
+    .sent {
+      background-color: #dcf8c6;
+      align-self: flex-end;
+    }
+
+    .received {
+      background-color: white;
+      align-self: flex-start;
+    }
+
+    .chat-input {
+      display: flex;
+      padding: 1rem;
+      background: #f5f5f5;
+      border-top: 1px solid #ddd;
+    }
+
+    .chat-input input {
+      flex: 1;
+      padding: 0.75rem;
+      border: none;
+      border-radius: 20px;
+      margin-right: 1rem;
+      font-size: 1rem;
+    }
+
+    .chat-input button {
+      background-color: #0084ff;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 20px;
+      cursor: pointer;
+    }
+
+    .chat-input button:hover {
+      background-color: #006fd6;
+    }
+
+    #loginUI {
+      background: white;
+      padding: 2rem;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      border-radius: 10px;
+      width: 300px;
+    }
+
+    #loginUI h2 {
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    #loginUI input {
+      width: 100%;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 1rem;
+    }
+
+    #loginUI button {
+      width: 100%;
+      padding: 0.75rem;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      font-size: 1rem;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    #loginUI button:hover {
+      background-color: #218838;
+    }
+
+    .error { color: red; margin-top: 10px; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <!-- Login Box -->
+  <div id="loginUI">
+    <h2>🔐 Login</h2>
+    <input type="text" id="username" placeholder="Username" />
+    <input type="password" id="password" placeholder="Password" />
+    <button onclick="login()">Login</button>
+    <div class="error" id="loginError"></div>
+  </div>
+
+  <!-- Chat UI -->
+  <div class="container" id="chatUI">
+    <div class="sidebar">
+      <div>
+        <h2>🧑‍🤝‍🧑 Rooms</h2>
+        <p>• Global Chat</p>
+      </div>
+      <button onclick="logout()">Logout</button>
+    </div>
+    <div class="chat-main">
+      <div class="chat-header" id="headerTitle">Global Chat Room</div>
+      <div id="chatMessages" class="chat-messages"></div>
+      <div class="chat-input">
+        <input type="text" id="messageInput" placeholder="Type a message..." />
+        <button onclick="sendMsg()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let socket;
+    let currentUser = "";
+
+    function login() {
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value.trim();
+      const loginError = document.getElementById("loginError");
+
+      fetch("http://127.0.0.1:8000/api/token/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.access) {
+          currentUser = username;
+          connectSocket(data.access);
+          document.getElementById("loginUI").style.display = "none";
+          document.getElementById("chatUI").style.display = "flex";
+          document.getElementById("headerTitle").innerText = `Global Chat (${username})`;
+        } else {
+          loginError.textContent = "Invalid credentials. Try again.";
+        }
+      });
+    }
+
+    function connectSocket(token) {
+      socket = new WebSocket(`ws://127.0.0.1:8000/ws/chat/?token=${token}`);
+
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        const msg = data.message;
+        // Check if it's sent by current user (avoid re-rendering duplicate)
+        if (!msg.startsWith("You:")) {
+          displayMsg(msg, msg.startsWith(`${currentUser}:`) ? "sent" : "received");
+        }
+      };
+
+      socket.onclose = () => {
+        displayMsg("🔌 Disconnected from chat.", "received");
+      };
+    }
+
+    function sendMsg() {
+      const input = document.getElementById("messageInput");
+      const msg = input.value.trim();
+      if (msg) {
+        const formatted = `${currentUser}: ${msg}`;
+        socket.send(JSON.stringify({ message: msg }));
+        displayMsg(formatted, "sent");
+        input.value = "";
+      }
+    }
+
+    function displayMsg(msg, type = "received") {
+      const msgBox = document.createElement("div");
+      msgBox.className = `message ${type}`;
+      msgBox.textContent = msg;
+      document.getElementById("chatMessages").appendChild(msgBox);
+      msgBox.scrollIntoView({ behavior: "smooth" });
+    }
+
+    function logout() {
+      if (socket) {
+        socket.close();
+      }
+      currentUser = "";
+      document.getElementById("chatMessages").innerHTML = "";
+      document.getElementById("chatUI").style.display = "none";
+      document.getElementById("loginUI").style.display = "block";
+    }
+  </script>
+
+</body>
+</html>

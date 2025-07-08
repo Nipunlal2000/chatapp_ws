@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket Live Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 2rem;
+            background: #f4f4f4;
+        }
+        #output {
+            white-space: pre-wrap;
+            background: #222;
+            color: #0f0;
+            padding: 1rem;
+            height: 200px;
+            overflow-y: scroll;
+            margin-top: 1rem;
+        }
+    </style>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/style.css">
+
+</head>
+<body>
+    <h2>🔌 WebSocket Test</h2>
+    <!-- <input id="msgInput" type="text" placeholder="Type your message..." /> -->
+    
+    <!-- <input id="msgInput" type="text" placeholder="Type your message..." oninput="notifyTyping()" />
+    <button onclick="sendMsg()">Send</button> -->
+
+    <!-- Login UI -->
+    <div id="loginUI">
+    <input type="text" id="username" placeholder="Username" />
+    <input type="password" id="password" placeholder="Password" />
+    <button onclick="login()">Login & Connect</button>
+    </div>
+
+    <!-- Chat UI: Hidden by default -->
+    <div id="chatUI" style="display: none; margin-top: 20px;">
+    <input id="msgInput" type="text" placeholder="Type your message..." />
+    <button onclick="sendMsg()">Send</button>
+    <div id="output" style="white-space: pre-wrap; margin-top: 1rem;"></div>
+    </div>
+
+
+    <!-- <emoji-picker></emoji-picker>
+
+    <div id="output">Connecting...</div>
+    <div id="typingStatus" style="color: gray;"></div> -->
+
+
+    <!-- <script>
+        // const output = document.getElementById("output");
+        // const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzUxOTczNTg4LCJpYXQiOjE3NTE5NzI3NTEsImp0aSI6IjAxYWE4Y2MzNTg1NzQ1OGQ5NTZlZjk4NDBjZTFlYzUwIiwidXNlcl9pZCI6MX0.q-vwIxEQlv2OqmbMsrSqqLEpaIU_lM7lYDK9SvQbKZA"
+        // const socket = new WebSocket(`ws://127.0.0.1:8000/ws/chat/?token=${token}`);
+
+        // socket.onopen = () => {
+        //     output.innerText += "\n✅ WebSocket connected.";
+        // };
+
+        // // socket.onmessage = (event) => {
+        // //     const msg = JSON.parse(event.data);
+        // //     output.innerText += `\n📩 ${msg.message}`;
+        // // };
+
+        // socket.onmessage = (event) => {
+        //     const data = JSON.parse(event.data);
+
+        //     if (data.typing !== undefined) {
+        //         document.getElementById("typingStatus").innerText = 
+        //             data.typing ? `${data.username} is typing...` : "";
+        //     } else {
+        //         output.innerText += `\n📩 ${data.message}`;
+        //         output.scrollTop = output.scrollHeight;
+        //     }
+        // };
+
+        // socket.onclose = () => {
+        //     output.innerText += "\n❌ WebSocket disconnected.";
+        // };
+
+        // function sendMsg() {
+        //     const input = document.getElementById("msgInput");
+        //     socket.send(JSON.stringify({ message: input.value }));
+        //     input.value = '';
+        // }
+
+        document.getElementById("chatUI").style.display = "block";
+
+        let socket;
+
+        function login() {
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+
+            fetch("http://127.0.0.1:8000/api/token/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password }),
+            })
+            .then((res) => res.json())
+            .then((data) => {
+                const token = data.access;
+                connectSocket(token);
+            });
+        }
+
+        function connectSocket(token) {
+            socket = new WebSocket(`ws://127.0.0.1:8000/ws/chat/?token=${token}`);
+
+            socket.onopen = () => {
+                document.getElementById("output").innerText += "\n✅ Connected.";
+            };
+
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                document.getElementById("output").innerText += `\n📩 ${data.message}`;
+            };
+
+            socket.onclose = () => {
+                document.getElementById("output").innerText += `\n❌ Disconnected.`;
+            };
+        }
+
+
+
+        let typingTimeout;
+        function notifyTyping() {
+            clearTimeout(typingTimeout);
+            socket.send(JSON.stringify({ type: "typing" }));
+
+            typingTimeout = setTimeout(() => {
+                socket.send(JSON.stringify({ type: "stop_typing" }));
+            }, 2000);  // stops after 2s of inactivity
+        }
+
+        const picker = document.querySelector('emoji-picker');
+        const input = document.getElementById("msgInput");
+
+        picker.addEventListener('emoji-click', event => {
+            input.value += event.detail.unicode;
+        });
+
+
+    </script> -->
+<script>
+    let socket;
+
+function login() {
+  const username = document.getElementById("username").value;
+  const password = document.getElementById("password").value;
+
+  fetch("http://127.0.0.1:8000/api/token/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.access) {
+      connectSocket(data.access);  // only proceed if token is returned
+    } else {
+      alert("❌ Invalid login");
+    }
+  });
+}
+
+function connectSocket(token) {
+  socket = new WebSocket(`ws://127.0.0.1:8000/ws/chat/?token=${token}`);
+
+  socket.onopen = () => {
+    document.getElementById("loginUI").style.display = "none";
+    document.getElementById("chatUI").style.display = "block";
+    document.getElementById("output").innerText = "✅ Connected to chat.\n";
+  };
+
+  socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    document.getElementById("output").innerText += `📩 ${data.message}\n`;
+  };
+
+  socket.onclose = () => {
+    document.getElementById("output").innerText += "❌ Disconnected.\n";
+  };
+}
+
+function sendMsg() {
+  const input = document.getElementById("msgInput");
+  const message = input.value.trim();
+  if (message !== "") {
+    socket.send(JSON.stringify({ message }));
+    input.value = "";
+  }
+}
+</script>
+
+</body>
+</html>
