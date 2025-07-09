@@ -160,43 +160,46 @@
 
     .error { color: red; margin-top: 10px; text-align: center; }
 
-    #roomList li {
-        padding: 8px 12px;
-        margin: 4px 0;
-        background: #f0f0f0;
-        border-radius: 4px;
-        cursor: pointer;
-        transition: background 0.2s;
-    }
+#roomList {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
 
-    #roomList li:hover {
-        background: #e0e0e0;
-    }
+.room-item {
+    padding: 8px 12px;
+    margin: 4px 0;
+    background: #e5ddd5; /* Main chat background color */
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: #333; /* Dark text for better contrast */
+    font-weight: 500;
+    border-left: 3px solid transparent;
+}
 
-    #roomList li.active {
-        background: #0084ff;
-        color: white;
-    }
-    .room-item {
-        padding: 8px 12px;
-        margin: 4px 0;
-        background: #f0f0f0;
-        border-radius: 4px;
-        cursor: pointer;
-        transition: all 0.2s;
-        list-style: none;
-    }
+/* Hover state */
+.room-item:hover:not(.active-room) {
+    background: #d8ccc0; /* Slightly darker than base */
+    transform: translateX(2px);
+}
 
-    .room-item.active-room {
-        background: #0084ff;
-        color: white;
-        cursor: default;
-    }
+/* Active room state */
+.room-item.active-room {
+    background: #f0e6dc; /* Brighter shade as requested */
+    color: #2c3e50; /* Darker text for active room */
+    font-weight: 600;
+    border-left: 3px solid #0084ff; /* Blue accent */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
 
-    .room-item.room-hover:not(.active-room) {
-        background: #e0e0e0;
-    }
-
+/* Current room indicator */
+.room-item.active-room::after {
+    content: "✓";
+    float: right;
+    color: #0084ff;
+    font-weight: bold;
+}
   </style>
 </head>
 <body>
