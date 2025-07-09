@@ -4,11 +4,12 @@ from urllib.parse import parse_qs
 from django.contrib.auth.models import AnonymousUser
 from django.db import close_old_connections
 from channels.db import database_sync_to_async
+from .models import Message, ChatRoom
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.user = await self.get_user()
-        self.room_name = "global_chat"
+        self.room_name = self.scope['url_route']['kwargs']['room_name']  # 🆕 dynamic
         self.room_group_name = f"chat_{self.room_name}"
 
         if self.user is None or self.user.is_anonymous:
@@ -46,6 +47,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 return AnonymousUser()
         return AnonymousUser()
 
+    @database_sync_to_async
+    def save_message(self, user, content, room_name):  
+        room, _ = ChatRoom.objects.get_or_create(name=room_name)
+        return Message.objects.create(sender=user, content=content, room=room)
+    
     async def receive(self, text_data):
         data = json.loads(text_data)
 
@@ -70,7 +76,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "message": message,
                 "sender": self.user.username
             }
+            
         )
+
+        await self.save_message(self.user, message, self.room_name)
+
 
     async def chat_message(self, event):
         # Only send to other clients (not the sender)

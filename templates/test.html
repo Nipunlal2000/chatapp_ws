@@ -159,6 +159,44 @@
     }
 
     .error { color: red; margin-top: 10px; text-align: center; }
+
+    #roomList li {
+        padding: 8px 12px;
+        margin: 4px 0;
+        background: #f0f0f0;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    #roomList li:hover {
+        background: #e0e0e0;
+    }
+
+    #roomList li.active {
+        background: #0084ff;
+        color: white;
+    }
+    .room-item {
+        padding: 8px 12px;
+        margin: 4px 0;
+        background: #f0f0f0;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+        list-style: none;
+    }
+
+    .room-item.active-room {
+        background: #0084ff;
+        color: white;
+        cursor: default;
+    }
+
+    .room-item.room-hover:not(.active-room) {
+        background: #e0e0e0;
+    }
+
   </style>
 </head>
 <body>
@@ -177,8 +215,9 @@
     <div class="sidebar">
       <div>
         <h2>🧑‍🤝‍🧑 Rooms</h2>
-        <p>• Global Chat</p>
-      </div>
+        <!-- <p>• Global Chat</p> -->
+        <ul id="roomList" style="list-style-type: none; padding-left: 0;">
+        </div>
       <button onclick="logout()">Logout</button>
     </div>
     <div class="chat-main">
@@ -192,141 +231,254 @@
     </div>
   </div>
 
-  <script>
-    let socket;
-    let currentUser = "";
+<script>
+  let socket;
+  let currentUser = "";
+  let currentToken = "";
+  let currentRoom = "global_chat"; // Default room name
 
-    function login() {
+  function login() {
       const username = document.getElementById("username").value.trim();
       const password = document.getElementById("password").value.trim();
       const loginError = document.getElementById("loginError");
 
       if (!username || !password) {
-        loginError.textContent = "Please enter both username and password.";
-        return;
+          loginError.textContent = "Please enter both username and password.";
+          return;
       }
 
       fetch("http://127.0.0.1:8000/api/token/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
       })
       .then(res => {
-        if (!res.ok) {
-          throw new Error('Invalid credentials');
-        }
-        return res.json();
+          console.log("Login response status:", res.status);  // Debug
+          if (!res.ok) {
+              return res.json().then(err => { throw err; });
+          }
+          return res.json();
       })
       .then(data => {
-        if (data.access) {
+          console.log("Login success data:", data);  // Debug
+          if (!data.access) {
+              throw new Error("No access token received");
+          }
           currentUser = username;
-          connectSocket(data.access);
+          currentToken = data.access;
+          connectToChat("global_chat");
           document.getElementById("loginUI").style.display = "none";
           document.getElementById("chatUI").style.display = "flex";
-          document.getElementById("headerTitle").innerText = `Global Chat (${username})`;
-        }
+          fetchRoomsAndConnect(data.access);
       })
       .catch(error => {
-        loginError.textContent = "Invalid credentials. Try again.";
+          console.error("Login error:", error);
+          loginError.textContent = error.detail || "Login failed. Please try again.";
       });
-    }
+  }
 
-    function connectSocket(token) {
-      socket = new WebSocket(`ws://127.0.0.1:8000/ws/chat/?token=${token}`);
+  async function connectToChat(roomName) {
+      // Close previous connection if exists
+      if (socket) {
+          socket.close();
+          displayMsg(`Switching to ${roomName}...`, "system", "System");
+      }
 
+      // Update current room and UI
+      currentRoom = roomName;
+      document.getElementById("headerTitle").textContent = `Room: ${roomName}`;
+      document.getElementById("chatMessages").innerHTML = "";
+
+      // Establish new connection
+      socket = new WebSocket(`ws://127.0.0.1:8000/ws/chat/${roomName}/?token=${currentToken}`);
+
+      // Connection handlers
       socket.onopen = () => {
-        console.log("WebSocket connection established");
+          console.log(`Connected to ${roomName}`);
+          displayMsg("Chat connected", "system", "System");
+          fetchChatHistory(); // Fetch messages after connection
       };
 
       socket.onmessage = (event) => {
-          const messageData = JSON.parse(event.data);
-
-          if (messageData.type === "typing") {
-              // Handle typing indicator
-              const typingIndicator = document.getElementById("typingIndicator");
-              if (messageData.typing_user) {
-                  typingIndicator.innerText = `${messageData.typing_user} is typing...`;
-                  typingIndicator.style.display = "block";
-              } else {
-                  typingIndicator.style.display = "none";
+          try {
+              const data = JSON.parse(event.data);
+              
+              if (data.type === "typing") {
+                  handleTypingIndicator(data.typing_user);
+              } 
+              else if (data.type === "chat") {
+                  if (data.sender !== currentUser) {
+                      displayMsg(data.message, "received", data.sender);
+                  }
               }
-          } 
-          else if (messageData.type === "chat") {
-              // Only display if message is from another user
-              if (messageData.sender !== currentUser) {
-                  displayMsg(messageData.message, "received", messageData.sender);
+              else if (data.type === "system") {
+                  displayMsg(data.message, "system", "System");
               }
-          }
-          else if (messageData.type === "system") {
-              // Display system messages
-              displayMsg(messageData.message, "system", "System");
+          } catch (e) {
+              console.error("Message parsing error:", e);
           }
       };
+
       socket.onclose = () => {
-        displayMsg("🔌 Disconnected from chat.", "received", "System");
+          displayMsg("Disconnected", "system", "System");
       };
 
       socket.onerror = (error) => {
-        console.error("WebSocket error:", error);
+          console.error("WebSocket error:", error);
+          displayMsg("Connection failed", "system", "System");
       };
-    }
+  }
 
-    function sendMsg() {
-      const messageInput = document.getElementById("messageInput");
-      const message = messageInput.value.trim();
+  function fetchChatHistory() {
+    fetch(`http://127.0.0.1:8000/api/chat/history/${currentRoom}/`, {
+      headers: { Authorization: `Bearer ${currentToken}` }
+    })
+    .then(res => {
+      if (!res.ok) throw new Error('Failed to fetch history');
+      return res.json();
+    })
+    .then(history => {
+      history.forEach(msg => {
+        const type = msg.sender.username === currentUser ? "sent" : "received";
+        displayMsg(msg.content, type, msg.sender.username);
+      });
+    })
+    .catch(error => {
+      console.error("Error fetching history:", error);
+    });
+  }
+
+  function sendMsg() {
+    const messageInput = document.getElementById("messageInput");
+    const message = messageInput.value.trim();
+
+    if (message === "") return;
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      // Display immediately as sent
+      displayMsg(message, "sent", currentUser);
       
-      if (message !== "" && socket && socket.readyState === WebSocket.OPEN) {
-        // Display the message immediately as "sent"
-        displayMsg(message, "sent", currentUser);
-        
-        // Send to server (without the "You:" prefix)
-        socket.send(JSON.stringify({ 
-          message: message,
-          sender: currentUser 
-        }));
-        
-        messageInput.value = "";
-      }
-    }
-
-    function handleKeyPress(event) {
-      if (event.key === "Enter") {
-        sendMsg();
-      }
-    }
-
-    function displayMsg(message, type, sender) {
-      const time = new Intl.DateTimeFormat([], { hour: "2-digit", minute: "2-digit" }).format(new Date());
-
-      const messageElement = document.createElement("div");
-      messageElement.className = `message ${type}`;
-
-      // For sent messages, show "You"
-      // For received messages, show the sender's username
-      const displayName = type === "sent" ? "You" : sender;
+      // Send to server
+      socket.send(JSON.stringify({ 
+        type: "chat",
+        message: message,
+        sender: currentUser
+      }));
       
-      messageElement.innerHTML = `
-        <div><strong>${displayName}:</strong> ${message}</div>
-        <div style="font-size: 0.7rem; text-align: ${type === "sent" ? "right" : "left"}; color: #666;">${time}</div>
-      `;
-
-      const chatLog = document.getElementById("chatMessages");
-      chatLog.appendChild(messageElement);
-      chatLog.scrollTop = chatLog.scrollHeight;
+      messageInput.value = "";
+    } else {
+      console.error("WebSocket is not open");
+      displayMsg("Failed to send message", "system", "System");
     }
+  }
 
-    function logout() {
-      if (socket) {
-        socket.close();
-      }
-      currentUser = "";
-      document.getElementById("chatMessages").innerHTML = "";
-      document.getElementById("chatUI").style.display = "none";
-      document.getElementById("loginUI").style.display = "block";
-      document.getElementById("username").value = "";
-      document.getElementById("password").value = "";
+  function handleTypingIndicator(username) {
+    const typingIndicator = document.getElementById("typingIndicator");
+    if (username && username !== currentUser) {
+      typingIndicator.textContent = `${username} is typing...`;
+      typingIndicator.style.display = "block";
+      
+      // Hide after 2 seconds
+      setTimeout(() => {
+        typingIndicator.style.display = "none";
+      }, 2000);
+    } else {
+      typingIndicator.style.display = "none";
     }
-  </script>
+  }
+
+  function handleKeyPress(event) {
+    if (event.key === "Enter") {
+      sendMsg();
+    }
+  }
+
+  function displayMsg(message, type, sender) {
+    const time = new Intl.DateTimeFormat([], { 
+      hour: "2-digit", 
+      minute: "2-digit" 
+    }).format(new Date());
+
+    const msgBox = document.createElement("div");
+    msgBox.className = `message ${type}`;
+
+    const displayName = type === "sent" ? "You" : sender;
+    const alignStyle = type === "sent" ? "right" : "left";
+
+    msgBox.innerHTML = `
+      <div><strong>${displayName}:</strong> ${message}</div>
+      <div style="font-size: 0.7rem; text-align: ${alignStyle}; color: #666;">
+        ${time}
+      </div>
+    `;
+
+    const chatLog = document.getElementById("chatMessages");
+    chatLog.appendChild(msgBox);
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
+
+  function logout() {
+    if (socket) {
+      socket.close();
+    }
+    currentUser = "";
+    currentToken = "";
+    document.getElementById("chatMessages").innerHTML = "";
+    document.getElementById("chatUI").style.display = "none";
+    document.getElementById("loginUI").style.display = "block";
+    document.getElementById("username").value = "";
+    document.getElementById("password").value = "";
+  }
+
+  function fetchRoomsAndConnect(token) {
+      fetch("http://127.0.0.1:8000/api/chat/rooms/", {
+          headers: { Authorization: `Bearer ${token}` }
+      })
+      .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status} - Failed to fetch rooms`);
+          return res.json();
+      })
+      .then(response => {
+          const rooms = response.data || [];
+          const list = document.getElementById("roomList");
+          list.innerHTML = "";
+
+          // Ensure 'global_chat' exists as default room
+          if (!rooms.some(room => room.name === "global_chat")) {
+              rooms.unshift({ id: 0, name: "global_chat" }); // Add as first item
+          }
+
+          // Create room list UI
+          rooms.forEach(room => {
+              const li = document.createElement("li");
+              li.textContent = room.name;
+              li.className = `room-item ${room.name === currentRoom ? 'active-room' : ''}`;
+              
+              li.onclick = () => {
+                  if (room.name !== currentRoom) {
+                      connectToChat(room.name);
+                  }
+              };
+              
+              list.appendChild(li);
+          });
+
+          // Connect to default room if not already connected
+          if (socket?.readyState !== WebSocket.OPEN) {
+              connectToChat(currentRoom); // Uses global default
+          }
+      })
+      .catch(error => {
+          console.error("Room fetch failed - using default:", error);
+          // Render minimal UI fallback
+          document.getElementById("roomList").innerHTML = `
+              <li class="room-item active-room">global_chat</li>
+          `;
+          connectToChat(currentRoom); // Force connect to default
+      });
+  }
+
+</script>
 
 </body>
 </html>
