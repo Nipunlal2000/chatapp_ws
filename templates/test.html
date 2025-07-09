@@ -183,9 +183,10 @@
     </div>
     <div class="chat-main">
       <div class="chat-header" id="headerTitle">Global Chat Room</div>
+      <div id="typingIndicator" style="padding: 0.5rem 1rem; font-style: italic; color: #777; display: none;"></div>
       <div id="chatMessages" class="chat-messages"></div>
       <div class="chat-input">
-        <input type="text" id="messageInput" placeholder="Type a message..." />
+        <input type="text" id="messageInput" placeholder="Type a message..." onkeypress="handleKeyPress(event)" />
         <button onclick="sendMsg()">Send</button>
       </div>
     </div>
@@ -200,12 +201,22 @@
       const password = document.getElementById("password").value.trim();
       const loginError = document.getElementById("loginError");
 
+      if (!username || !password) {
+        loginError.textContent = "Please enter both username and password.";
+        return;
+      }
+
       fetch("http://127.0.0.1:8000/api/token/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       })
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('Invalid credentials');
+        }
+        return res.json();
+      })
       .then(data => {
         if (data.access) {
           currentUser = username;
@@ -213,46 +224,95 @@
           document.getElementById("loginUI").style.display = "none";
           document.getElementById("chatUI").style.display = "flex";
           document.getElementById("headerTitle").innerText = `Global Chat (${username})`;
-        } else {
-          loginError.textContent = "Invalid credentials. Try again.";
         }
+      })
+      .catch(error => {
+        loginError.textContent = "Invalid credentials. Try again.";
       });
     }
 
     function connectSocket(token) {
       socket = new WebSocket(`ws://127.0.0.1:8000/ws/chat/?token=${token}`);
 
-      socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        const msg = data.message;
-        // Check if it's sent by current user (avoid re-rendering duplicate)
-        if (!msg.startsWith("You:")) {
-          displayMsg(msg, msg.startsWith(`${currentUser}:`) ? "sent" : "received");
-        }
+      socket.onopen = () => {
+        console.log("WebSocket connection established");
       };
 
+      socket.onmessage = (event) => {
+          const messageData = JSON.parse(event.data);
+
+          if (messageData.type === "typing") {
+              // Handle typing indicator
+              const typingIndicator = document.getElementById("typingIndicator");
+              if (messageData.typing_user) {
+                  typingIndicator.innerText = `${messageData.typing_user} is typing...`;
+                  typingIndicator.style.display = "block";
+              } else {
+                  typingIndicator.style.display = "none";
+              }
+          } 
+          else if (messageData.type === "chat") {
+              // Only display if message is from another user
+              if (messageData.sender !== currentUser) {
+                  displayMsg(messageData.message, "received", messageData.sender);
+              }
+          }
+          else if (messageData.type === "system") {
+              // Display system messages
+              displayMsg(messageData.message, "system", "System");
+          }
+      };
       socket.onclose = () => {
-        displayMsg("🔌 Disconnected from chat.", "received");
+        displayMsg("🔌 Disconnected from chat.", "received", "System");
+      };
+
+      socket.onerror = (error) => {
+        console.error("WebSocket error:", error);
       };
     }
 
     function sendMsg() {
-      const input = document.getElementById("messageInput");
-      const msg = input.value.trim();
-      if (msg) {
-        const formatted = `${currentUser}: ${msg}`;
-        socket.send(JSON.stringify({ message: msg }));
-        displayMsg(formatted, "sent");
-        input.value = "";
+      const messageInput = document.getElementById("messageInput");
+      const message = messageInput.value.trim();
+      
+      if (message !== "" && socket && socket.readyState === WebSocket.OPEN) {
+        // Display the message immediately as "sent"
+        displayMsg(message, "sent", currentUser);
+        
+        // Send to server (without the "You:" prefix)
+        socket.send(JSON.stringify({ 
+          message: message,
+          sender: currentUser 
+        }));
+        
+        messageInput.value = "";
       }
     }
 
-    function displayMsg(msg, type = "received") {
-      const msgBox = document.createElement("div");
-      msgBox.className = `message ${type}`;
-      msgBox.textContent = msg;
-      document.getElementById("chatMessages").appendChild(msgBox);
-      msgBox.scrollIntoView({ behavior: "smooth" });
+    function handleKeyPress(event) {
+      if (event.key === "Enter") {
+        sendMsg();
+      }
+    }
+
+    function displayMsg(message, type, sender) {
+      const time = new Intl.DateTimeFormat([], { hour: "2-digit", minute: "2-digit" }).format(new Date());
+
+      const messageElement = document.createElement("div");
+      messageElement.className = `message ${type}`;
+
+      // For sent messages, show "You"
+      // For received messages, show the sender's username
+      const displayName = type === "sent" ? "You" : sender;
+      
+      messageElement.innerHTML = `
+        <div><strong>${displayName}:</strong> ${message}</div>
+        <div style="font-size: 0.7rem; text-align: ${type === "sent" ? "right" : "left"}; color: #666;">${time}</div>
+      `;
+
+      const chatLog = document.getElementById("chatMessages");
+      chatLog.appendChild(messageElement);
+      chatLog.scrollTop = chatLog.scrollHeight;
     }
 
     function logout() {
@@ -263,6 +323,8 @@
       document.getElementById("chatMessages").innerHTML = "";
       document.getElementById("chatUI").style.display = "none";
       document.getElementById("loginUI").style.display = "block";
+      document.getElementById("username").value = "";
+      document.getElementById("password").value = "";
     }
   </script>
 

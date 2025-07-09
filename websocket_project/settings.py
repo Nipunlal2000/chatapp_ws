@@ -1,15 +1,19 @@
 import os
 from pathlib import Path
+from datetime import timedelta
+from dotenv import load_dotenv
+from decouple import config
+
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+SECRET_KEY = config('SECRET_KEY')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-a!b3m+o2p@ttfqm0tq!(_@o)jl)rbrnt@$h-9vo62f!!*&9_8i'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -67,10 +71,15 @@ ASGI_APPLICATION = 'websocket_project.asgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME'),    
+        'USER': os.getenv('DB_USER'),    
+        'PASSWORD': os.getenv('DB_PASSWORD'),  
+        'HOST': os.getenv('DB_HOST'),      
+        'PORT': os.getenv('DB_PORT'),    
     }
 }
+
 
 
 # Password validation
